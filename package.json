@@ -1,0 +1,58 @@
+{
+  "name": "@olurabian/deadlatch-otel",
+  "version": "0.1.0",
+  "description": "Emit Deadlatch control events (Purse enforce, blackbox prove, Tripwire watch) as OpenTelemetry spans. Flows into Grafana, agento11y, or any OTel backend.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "demo": "tsx examples/demo.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "opentelemetry",
+    "otel",
+    "observability",
+    "ai-agents",
+    "agent-governance",
+    "grafana",
+    "deadlatch",
+    "purse",
+    "tracing"
+  ],
+  "author": "Oluwasegun Araba (https://olurabian.com)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ArabianAnalyst/deadlatch-otel.git"
+  },
+  "homepage": "https://deadlatch.dev",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0"
+  },
+  "devDependencies": {
+    "@olurabian/blackbox": "^0.1.1",
+    "@olurabian/purse": "^0.2.2",
+    "@opentelemetry/sdk-trace-base": "^2.0.0",
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}
