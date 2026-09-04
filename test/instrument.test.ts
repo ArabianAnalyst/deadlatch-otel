@@ -62,6 +62,21 @@ test("blackbox: verify on a broken chain emits an error prove span", () => {
   assert.equal(ver!.status.code, 2); // ERROR
 });
 
+test("blackbox: a receipt envelope (blackbox >= 0.2) is read from payload", () => {
+  exporter.reset();
+  const recorder = instrumentRecorder({
+    record: (e) => ({ id: "id-1", ts: "2026-09-04T00:00:00.000Z", kind: "action", payload: e as object, prevHash: "0".repeat(64), hash: "abc123" }),
+    verify: () => ({ ok: true }),
+  });
+  recorder.record({ action: "pay", outcome: "error", error: "declined" });
+  const rec = exporter.getFinishedSpans().find((s) => s.name === "deadlatch.prove");
+  assert.ok(rec, "record span emitted");
+  assert.equal(rec!.attributes["blackbox.action"], "pay");
+  assert.equal(rec!.attributes["blackbox.outcome"], "error");
+  assert.equal(rec!.attributes["blackbox.hash"], "abc123");
+  assert.equal(rec!.status.code, 2); // ERROR, from payload.outcome
+});
+
 test("tripwire: a violated scan emits a watch span plus a flag child", async () => {
   exporter.reset();
   const scan = instrumentScan(async () => ({

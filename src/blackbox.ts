@@ -18,14 +18,17 @@ export function instrumentRecorder<T extends RecorderLike>(
   recorder.record = ((entry: unknown): unknown =>
     tracer.startActiveSpan("deadlatch.prove", (span) => {
       const rec = origRecord(entry) as Record<string, unknown>;
+      // blackbox >= 0.2 returns a receipt envelope with the action fields under
+      // payload; older versions return them flat. Read whichever is present.
+      const p = (rec?.payload ?? rec) as Record<string, unknown>;
       span.setAttribute("deadlatch.leg", "prove");
       span.setAttribute("deadlatch.package", "blackbox");
-      if (rec?.action != null) span.setAttribute("blackbox.action", String(rec.action));
-      if (rec?.outcome != null) span.setAttribute("blackbox.outcome", String(rec.outcome));
+      if (p?.action != null) span.setAttribute("blackbox.action", String(p.action));
+      if (p?.outcome != null) span.setAttribute("blackbox.outcome", String(p.outcome));
       if (rec?.seq != null) span.setAttribute("blackbox.seq", Number(rec.seq));
       if (rec?.hash != null) span.setAttribute("blackbox.hash", String(rec.hash));
-      if (rec?.outcome === "error") {
-        span.setStatus({ code: SpanStatusCode.ERROR, message: String(rec.error ?? "error") });
+      if (p?.outcome === "error") {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: String(p.error ?? "error") });
       }
       span.end();
       return rec;

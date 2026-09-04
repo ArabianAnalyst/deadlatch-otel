@@ -1,6 +1,6 @@
 {
   "name": "@olurabian/deadlatch-otel",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Emit Deadlatch control events (Purse enforce, blackbox prove, Tripwire watch) as OpenTelemetry spans. Flows into Grafana, agento11y, or any OTel backend.",
   "type": "module",
   "main": "./dist/index.js",
@@ -53,6 +53,12 @@
     "@opentelemetry/sdk-trace-base": "^2.0.0",
     "@types/node": "^20.11.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "@lavamoat/allow-scripts": "^5.1.0"
+  },
+  "lavamoat": {
+    "allowScripts": {
+      "tsx>esbuild#0.28.2": true
+    }
   }
 }
