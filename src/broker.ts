@@ -1,4 +1,4 @@
-import { SpanStatusCode, metrics, type Attributes, type Span } from "@opentelemetry/api";
+import { SpanStatusCode, metrics, type Attributes, type Counter, type Span } from "@opentelemetry/api";
 import { getTracer, DEADLATCH_TRACER } from "./otel.js";
 import type { BrokerLike, BrokerRequestLike, BrokerExecuteLike, InstrumentBrokerOptions } from "./types.js";
 
@@ -18,32 +18,39 @@ function base(span: Span): void {
  */
 export function instrumentBroker<T extends BrokerLike>(broker: T, opts: InstrumentBrokerOptions = {}): T {
   const tracer = getTracer(opts.tracerName ?? DEADLATCH_TRACER);
-  const meter = metrics.getMeter(opts.meterName ?? DEADLATCH_TRACER);
-  const decisions = meter.createCounter("deadlatch.purse.decisions", { description: "Spend decisions by outcome" });
-  const executions = meter.createCounter("deadlatch.purse.executions", { description: "Grant executions by status" });
-
-  if (typeof broker.pending === "function") {
-    meter.createObservableGauge("deadlatch.purse.approvals.pending", { description: "Spends waiting for a principal" })
-      .addCallback((r) => { try { r.observe(broker.pending!().length); } catch { /* keep observing */ } });
-  }
-  if (opts.store?.pending) {
+  const meterName = opts.meterName ?? DEADLATCH_TRACER;
+  let instruments: { decisions: Counter; executions: Counter } | null = null;
+  const inst = (): { decisions: Counter; executions: Counter } => {
+    if (instruments) return instruments;
+    const meter = metrics.getMeter(meterName);
+    instruments = {
+      decisions: meter.createCounter("deadlatch.purse.decisions", { description: "Spend decisions by outcome" }),
+      executions: meter.createCounter("deadlatch.purse.executions", { description: "Grant executions by status" }),
+    };
+    if (typeof broker.pending === "function") {
+      meter.createObservableGauge("deadlatch.purse.approvals.pending", { description: "Spends waiting for a principal" })
+        .addCallback((r) => { try { r.observe(broker.pending!().length); } catch { /* keep observing */ } });
+    }
     const s = opts.store;
-    meter.createObservableGauge("deadlatch.purse.store.pending", { description: "Receipts queued but not yet durable" })
-      .addCallback((r) => { try { r.observe(s.pending!()); } catch { /* keep observing */ } });
-  }
-  if (opts.store?.degraded) {
-    const s = opts.store;
-    meter.createObservableGauge("deadlatch.purse.store.degraded", { description: "1 when the audit store has latched" })
-      .addCallback((r) => { try { r.observe(s.degraded!() ? 1 : 0); } catch { /* keep observing */ } });
-  }
+    if (s?.pending) {
+      meter.createObservableGauge("deadlatch.purse.store.pending", { description: "Receipts queued but not yet durable" })
+        .addCallback((r) => { try { r.observe(s.pending!()); } catch { /* keep observing */ } });
+    }
+    if (s?.degraded) {
+      meter.createObservableGauge("deadlatch.purse.store.degraded", { description: "1 when the audit store has latched" })
+        .addCallback((r) => { try { r.observe(s.degraded!() ? 1 : 0); } catch { /* keep observing */ } });
+    }
+    return instruments;
+  };
 
   const origRequest = broker.request.bind(broker);
   broker.request = ((req: unknown): BrokerRequestLike =>
     tracer.startActiveSpan("deadlatch.enforce.request", (span) => {
       base(span);
-      const r = req as { amount?: unknown; payee?: unknown } | null;
+      const r = req as { amount?: unknown; payee?: unknown; intent?: unknown } | null;
       if (r?.amount != null) span.setAttribute("purse.amount", String(r.amount));
       if (r?.payee != null) span.setAttribute("purse.payee", String(r.payee));
+      if (r?.intent != null) span.setAttribute("purse.intent", String(r.intent));
       let out: BrokerRequestLike;
       try {
         out = origRequest(req);
@@ -59,7 +66,8 @@ export function instrumentBroker<T extends BrokerLike>(broker: T, opts: Instrume
       if (out.pendingId) attrs["purse.pending_id"] = out.pendingId;
       span.setAttributes(attrs);
       if (out.decision === "denied") span.setStatus({ code: SpanStatusCode.ERROR, message: out.reason ?? "denied" });
-      decisions.add(1, { decision: out.decision });
+      if (out.decision === "needs_approval") span.setAttribute("deadlatch.held", true);
+      inst().decisions.add(1, { decision: out.decision });
       span.end();
       return out;
     })) as T["request"];
@@ -74,12 +82,12 @@ export function instrumentBroker<T extends BrokerLike>(broker: T, opts: Instrume
         span.setAttribute("purse.status", out.status);
         if (out.reason) span.setAttribute("purse.reason", out.reason);
         if (out.status !== "paid") span.setStatus({ code: SpanStatusCode.ERROR, message: out.reason ?? out.status });
-        executions.add(1, { status: out.status });
+        inst().executions.add(1, { status: out.status });
         return out;
       } catch (err) {
         span.recordException(err as Error);
         span.setStatus({ code: SpanStatusCode.ERROR, message: errMessage(err) });
-        executions.add(1, { status: "error" });
+        inst().executions.add(1, { status: "error" });
         throw err;
       } finally {
         span.end();

@@ -38,7 +38,7 @@ That is the whole integration. Use the objects exactly as before. The spans emit
 
 ## Enforcement mode
 
-`instrumentBroker(broker, { store })` wraps a Purse `Broker`. Every `request()`, `execute()`, `approve()` and `deny()` becomes a `deadlatch.enforce.*` span, denied decisions and rejected executions are marked as errors, and five metrics flow through the OpenTelemetry API so whatever SDK you run collects them. `deadlatch.purse.decisions` and `deadlatch.purse.executions` are counters. `deadlatch.purse.approvals.pending`, `deadlatch.purse.store.pending` and `deadlatch.purse.store.degraded` are gauges, the last two read from the store you pass in, which is how a latched Postgres store becomes a page instead of a silence.
+`instrumentBroker(broker, { store })` wraps a Purse `Broker`. Every `request()`, `execute()`, `approve()` and `deny()` becomes a `deadlatch.enforce.*` span, denied decisions and rejected executions are marked as errors, and five metrics flow through the OpenTelemetry API so whatever SDK you run collects them. `deadlatch.purse.decisions` and `deadlatch.purse.executions` are counters. `deadlatch.purse.approvals.pending`, `deadlatch.purse.store.pending` and `deadlatch.purse.store.degraded` are gauges, the last two read from the store you pass in, which is how a latched Postgres store becomes a page instead of a silence. Instruments are created on first use, so it does not matter whether you register your metrics SDK before or after wrapping the broker. Wrap one broker per process, or give each its own `meterName`, because gauges registered under one meter name replace each other silently.
 
 ## What lands in your backend
 

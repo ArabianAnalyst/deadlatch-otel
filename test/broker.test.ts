@@ -14,9 +14,9 @@ const reader = new PeriodicExportingMetricReader({ exporter: metricExporter, exp
 const meterProvider = new MeterProvider({ readers: [reader] });
 metrics.setGlobalMeterProvider(meterProvider);
 
-function metricPoints(name: string) {
+function metricPoints(name: string, exporter: InMemoryMetricExporter = metricExporter) {
   const out: { value: number; attrs: Record<string, unknown> }[] = [];
-  for (const rm of metricExporter.getMetrics()) for (const sm of rm.scopeMetrics) for (const m of sm.metrics) {
+  for (const rm of exporter.getMetrics()) for (const sm of rm.scopeMetrics) for (const m of sm.metrics) {
     if (m.descriptor.name !== name) continue;
     for (const dp of m.dataPoints) out.push({ value: Number(dp.value), attrs: dp.attributes as Record<string, unknown> });
   }
@@ -45,6 +45,7 @@ test("request, execute, approve and deny emit enforce spans with attributes", as
   const first = spans.getFinishedSpans()[0]!;
   assert.equal(first.attributes["purse.decision"], "allowed");
   assert.equal(first.attributes["purse.payee"], "api.stripe.com");
+  assert.equal(first.attributes["purse.intent"], "credits");
   assert.equal(first.attributes["deadlatch.leg"], "enforce");
   assert.equal(typeof first.attributes["purse.grant_id"], "string");
   const last = spans.getFinishedSpans().at(-1)!;
@@ -52,6 +53,9 @@ test("request, execute, approve and deny emit enforce spans with attributes", as
   assert.equal(last.status.code, 2); // SpanStatusCode.ERROR
   const exec = spans.getFinishedSpans()[1]!;
   assert.equal(exec.attributes["purse.status"], "paid");
+  const held = spans.getFinishedSpans()[2]!;
+  assert.equal(held.attributes["purse.decision"], "needs_approval");
+  assert.equal(held.attributes["deadlatch.held"], true);
 });
 
 test("a rejected execute and a thrown execute mark the span as error", async () => {
@@ -85,4 +89,26 @@ test("counters and gauges are recorded", async () => {
   assert.equal(metricPoints("deadlatch.purse.store.pending").at(-1)?.value, 3);
   assert.equal(metricPoints("deadlatch.purse.store.degraded").at(-1)?.value, 1);
   assert.equal(metricPoints("deadlatch.purse.approvals.pending").at(-1)?.value, 1);
+});
+
+// Ordered last: it calls metrics.disable() to simulate a host that registers its
+// MeterProvider after instrumentBroker() has already run. That call tears down the
+// global no-op meter the tests above share, so it must not run before them.
+test("metrics work when the SDK is registered after instrumentation", async () => {
+  metrics.disable();
+  const b = instrumentBroker(new Broker({ maxPerAction: "$5", allow: ["api.stripe.com"], executor: new MockExecutor() }));
+
+  const lateExporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+  const lateReader = new PeriodicExportingMetricReader({ exporter: lateExporter, exportIntervalMillis: 3_600_000 });
+  const lateProvider = new MeterProvider({ readers: [lateReader] });
+  metrics.setGlobalMeterProvider(lateProvider);
+
+  const r = b.request({ amount: "$1", payee: "api.stripe.com", intent: "late-bind" });
+  await b.execute(r.grantId!);
+  await lateReader.forceFlush();
+
+  const decisions = metricPoints("deadlatch.purse.decisions", lateExporter);
+  assert.ok(decisions.some((p) => p.attrs.decision === "allowed" && p.value >= 1), JSON.stringify(decisions));
+  const executions = metricPoints("deadlatch.purse.executions", lateExporter);
+  assert.ok(executions.some((p) => p.attrs.status === "paid" && p.value >= 1), JSON.stringify(executions));
 });
