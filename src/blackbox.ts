@@ -41,7 +41,19 @@ export function instrumentRecorder<T extends RecorderLike>(
       span.setAttribute("deadlatch.package", "blackbox");
       span.setAttribute("blackbox.chain_ok", !!res.ok);
       if (!res.ok) {
-        if (res.brokenAt != null) span.setAttribute("blackbox.broken_at", Number(res.brokenAt));
+        // blackbox >= 0.2 reports brokenAt as a numeric array index plus a
+        // separate id field. blackbox 0.1 reported brokenAt as the broken
+        // record's id, a string, with no id field. Read whichever is present
+        // and never coerce a non-numeric brokenAt into NaN.
+        const raw = res as unknown as { brokenAt?: unknown; id?: unknown };
+        if (typeof raw.brokenAt === "number") {
+          span.setAttribute("blackbox.broken_at", raw.brokenAt);
+        } else if (typeof raw.brokenAt === "string") {
+          span.setAttribute("blackbox.broken_id", raw.brokenAt);
+        }
+        if (typeof raw.id === "string") {
+          span.setAttribute("blackbox.broken_id", raw.id);
+        }
         span.setStatus({
           code: SpanStatusCode.ERROR,
           message: res.reason ?? `chain broken at ${res.brokenAt}`,

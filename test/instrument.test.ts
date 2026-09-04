@@ -46,7 +46,8 @@ test("blackbox: verify on a broken chain emits an error prove span", () => {
   exporter.reset();
   const recorder = instrumentRecorder({
     record: (e) => ({ ...(e as object), seq: 1, hash: "abc123" }),
-    verify: () => ({ ok: false, brokenAt: 2 }),
+    // blackbox >= 0.2 shape: numeric array index plus the id of the broken receipt.
+    verify: () => ({ ok: false, brokenAt: 2, id: "id-3" }),
   });
   recorder.record({ action: "pay", outcome: "ok" });
   const res = recorder.verify();
@@ -58,8 +59,25 @@ test("blackbox: verify on a broken chain emits an error prove span", () => {
   assert.equal(rec!.attributes["blackbox.action"], "pay");
   assert.ok(ver, "verify span emitted");
   assert.equal(ver!.attributes["blackbox.chain_ok"], false);
+  assert.equal(typeof ver!.attributes["blackbox.broken_at"], "number");
   assert.equal(ver!.attributes["blackbox.broken_at"], 2);
+  assert.equal(ver!.attributes["blackbox.broken_id"], "id-3");
   assert.equal(ver!.status.code, 2); // ERROR
+});
+
+test("blackbox: a 0.1-style broken result (string brokenAt, no id) sets broken_id, never broken_at", () => {
+  exporter.reset();
+  const recorder = instrumentRecorder({
+    record: (e) => ({ ...(e as object), seq: 1, hash: "abc123" }),
+    // blackbox 0.1 shape: brokenAt was the broken record's id, a string, and
+    // there was no separate id field.
+    verify: () => ({ ok: false, brokenAt: "id-2", reason: "hash mismatch (a record was altered)" }),
+  });
+  recorder.verify();
+  const ver = exporter.getFinishedSpans().find((s) => s.name === "deadlatch.prove.verify");
+  assert.ok(ver, "verify span emitted");
+  assert.equal(ver!.attributes["blackbox.broken_id"], "id-2");
+  assert.equal(ver!.attributes["blackbox.broken_at"], undefined);
 });
 
 test("blackbox: a receipt envelope (blackbox >= 0.2) is read from payload", () => {
