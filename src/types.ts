@@ -37,3 +37,35 @@ export type ScanLike = (
   entrypoint: unknown,
   options?: unknown
 ) => Promise<ScanReportLike> | ScanReportLike;
+
+export interface BrokerRequestLike {
+  decision: string; // "allowed" | "needs_approval" | "denied"
+  reason?: string;
+  grantId?: string;
+  pendingId?: string;
+}
+
+export interface BrokerExecuteLike {
+  status: string; // "paid" | "rejected"
+  reason?: string;
+}
+
+export interface BrokerLike {
+  request(req: unknown): BrokerRequestLike;
+  execute(grantId: string): Promise<BrokerExecuteLike>;
+  approve?(pendingId: string): unknown;
+  deny?(pendingId: string): unknown;
+  pending?(): unknown[];
+  verify(): VerifyResultLike;
+}
+
+export interface StoreHealthLike {
+  pending?(): number;
+  degraded?(): Error | null;
+}
+
+export interface InstrumentBrokerOptions {
+  tracerName?: string;
+  meterName?: string;
+  store?: StoreHealthLike;
+}

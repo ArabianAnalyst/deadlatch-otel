@@ -6,6 +6,7 @@
 // Grafana, agento11y, or any OTel backend, unchanged.
 
 export { instrumentPurse } from "./purse.js";
+export { instrumentBroker } from "./broker.js";
 export { instrumentRecorder } from "./blackbox.js";
 export { instrumentScan } from "./tripwire.js";
 export { getTracer, DEADLATCH_TRACER } from "./otel.js";
@@ -18,4 +19,9 @@ export type {
   ScanLike,
   ScanReportLike,
   ScanSummaryLike,
+  BrokerLike,
+  BrokerRequestLike,
+  BrokerExecuteLike,
+  StoreHealthLike,
+  InstrumentBrokerOptions,
 } from "./types.js";
